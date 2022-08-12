@@ -14,11 +14,12 @@ from __future__ import print_function
 import carla
 import py_trees
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
-
-from srunner.scenariomanager.scenarioatomics.atomic_behaviors import (ActorDestroy, Idle)
-from srunner.scenariomanager.scenarioatomics.atomic_criteria import CollisionTest
-from srunner.scenariomanager.scenarioatomics.atomic_trigger_conditions import InTriggerDistanceToVehicle
-
+from srunner.scenariomanager.scenarioatomics.atomic_behaviors import (
+    ActorDestroy, Idle)
+from srunner.scenariomanager.scenarioatomics.atomic_criteria import \
+    CollisionTest
+from srunner.scenariomanager.scenarioatomics.atomic_trigger_conditions import \
+    InTriggerDistanceToVehicle
 from srunner.scenarios.basic_scenario import BasicScenario
 from srunner.tools.background_manager import HandleJunctionScenario
 
@@ -56,16 +57,39 @@ class BlockedIntersection(BasicScenario):
         self._trigger_location = config.trigger_points[0].location
         self._reference_waypoint = self._map.get_waypoint(self._trigger_location)
 
-        self._blocker_distance = 9
-        self._trigger_distance = 13
-        self._stop_time = 10
+        self._blocker_location = convert_dict_to_location(
+            config.other_parameters['blocker_point'])
+        self._blocker_waypoint = self._map.get_waypoint(self._blocker_location)
+        self._block_distance = 10  # m. Will stop blocking when ego is within this distance
+        self._block_time = 5  # s
 
-        super().__init__("BlockedIntersection",
-                         ego_vehicles,
-                         config,
-                         world,
-                         debug_mode,
-                         criteria_enable=criteria_enable)
+        if 'obstacle_model' in config.other_parameters:
+            self._obstacle_model = config.other_parameters['obstacle_model']['value']
+        else:
+            self._obstacle_model = "static.prop.trampoline"
+
+        if 'obstacle_gap' in config.other_parameters:
+            self._obstacle_gap = int(
+                config.other_parameters['obstacle_gap']['value'])
+        else:
+            self._obstacle_gap = 2
+
+        # Extra obstacles are not included. One obstacle by default.
+        self._obstacle_amount = 1
+
+        # The amount of obstacles that invade the road
+        if 'extra_obstacle' in config.other_parameters:
+            self._extra_obstacle = int(
+                config.other_parameters['extra_obstacle']['value'])
+        else:
+            self._extra_obstacle = 2
+
+        super(BlockedIntersection, self).__init__("BlockedIntersection",
+                                                  ego_vehicles,
+                                                  config,
+                                                  world,
+                                                  debug_mode,
+                                                  criteria_enable=criteria_enable)
 
     def _initialize_actors(self, config):
         """
@@ -100,8 +124,8 @@ class BlockedIntersection(BasicScenario):
             ))
         # Ego go behind the blocker
         sequence.add_child(InTriggerDistanceToVehicle(
-            self.other_actors[-1], self.ego_vehicles[0], self._trigger_distance))
-        sequence.add_child(Idle(self._stop_time))
+            self.other_actors[-1], self.ego_vehicles[0],  self._block_distance))
+        sequence.add_child(Idle(self._block_time))
         sequence.add_child(ActorDestroy(self.other_actors[-1]))
 
         return sequence
@@ -112,7 +136,7 @@ class BlockedIntersection(BasicScenario):
         in parallel behavior tree.
         """
         if self.route_mode:
-            return []
+            return[]
 
         return [CollisionTest(self.ego_vehicles[0])]
 
