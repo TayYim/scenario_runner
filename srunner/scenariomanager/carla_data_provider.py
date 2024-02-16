@@ -70,6 +70,10 @@ class CarlaDataProvider(object):  # pylint: disable=too-many-public-methods
     _runtime_init_flag = False
     _lock = threading.Lock()
 
+    # OSG
+    _car_follow_data_map = {}  # 跟车数据
+    _actor_velocity_vector_map = {}
+
     @staticmethod
     def register_actor(actor, transform=None):
         """
@@ -95,6 +99,12 @@ class CarlaDataProvider(object):  # pylint: disable=too-many-public-methods
                     "Vehicle '{}' already registered. Cannot register twice!".format(actor.id))
             else:
                 CarlaDataProvider._actor_transform_map[actor] = transform
+
+            if actor in CarlaDataProvider._actor_velocity_vector_map:
+                raise KeyError(
+                    "Vehicle '{}' already registered. Cannot register twice!".format(actor.id))
+            else:
+                CarlaDataProvider._actor_velocity_vector_map[actor] = None
 
     @staticmethod
     def update_osc_global_params(parameters):
@@ -139,11 +149,18 @@ class CarlaDataProvider(object):  # pylint: disable=too-many-public-methods
                 if actor is not None and actor.is_alive:
                     CarlaDataProvider._actor_transform_map[actor] = actor.get_transform()
 
+            for actor in CarlaDataProvider._actor_velocity_vector_map:
+                if actor is not None and actor.is_alive:
+                    CarlaDataProvider._actor_velocity_vector_map[actor] = actor.get_velocity()
+
             world = CarlaDataProvider._world
             if world is None:
                 print("WARNING: CarlaDataProvider couldn't find the world")
 
             CarlaDataProvider._all_actors = None
+
+            # reset car follow data
+            CarlaDataProvider._car_follow_data_map = {}
 
     @staticmethod
     def get_velocity(actor):
@@ -158,6 +175,20 @@ class CarlaDataProvider(object):  # pylint: disable=too-many-public-methods
         # This may cause exception loops in py_trees
         print('{}.get_velocity: {} not found!' .format(__name__, actor))
         return 0.0
+
+    @staticmethod
+    def get_velocity_vector(actor):
+        """
+        returns the velocity vector for the given actor
+        """
+        for key in CarlaDataProvider._actor_velocity_vector_map:
+            if key.id == actor.id:
+                return CarlaDataProvider._actor_velocity_vector_map[key]
+
+        # We are intentionally not throwing here
+        # This may cause exception loops in py_trees
+        print('{}._actor_velocity_vector_map: {} not found!'.format(__name__, actor))
+        return carla.Vector3D()
 
     @staticmethod
     def get_location(actor):
@@ -842,6 +873,82 @@ class CarlaDataProvider(object):  # pylint: disable=too-many-public-methods
         CarlaDataProvider._traffic_manager_port = tm_port
 
     @staticmethod
+    def get_car_follow_data(actor):
+        """
+        获取跟车相关数据
+        包括TTC, THW, 相对前车速度, 相对前车距离
+        当前不考虑车辆的bounding box
+        """
+
+        # 先检查本tick内是否已经调用过此方法，_car_follow_data个tick会被清空
+        if actor.id in CarlaDataProvider._car_follow_data_map:
+            return CarlaDataProvider._car_follow_data_map[actor.id]
+
+        if actor is None:
+            return None
+
+        actor_transform = CarlaDataProvider.get_transform(actor)
+
+        if actor_transform is None:
+            return None
+
+        actor_location = actor_transform.location
+        actor_froward_vector = actor_transform.get_forward_vector()
+        actor_velocity_vector = CarlaDataProvider.get_velocity_vector(actor)
+        max_distance = actor_velocity_vector.length() * 10.0  # 最大检测范围，10秒actor行驶的距离
+
+        vehicles = CarlaDataProvider.get_all_actors().filter('vehicle.*')
+
+        # calculate ttc
+        ttc = 10
+        thw = 10
+        rel_velocity = 0
+        rel_distance = max_distance
+        front_vehicles_count = 0
+        for other_actor in vehicles:
+            if other_actor.id != actor.id:  # avoid comparing with itself
+                # 由于其他车辆不一定是CDP生成的(外接交通流)，所以其他车辆的参数使用carla的接口获取
+                other_actor_location = other_actor.get_location()
+                other_actor_velocity_vector = other_actor.get_velocity()
+                location_vector = other_actor_location - actor_location
+                velocity_vector = actor_velocity_vector - other_actor_velocity_vector
+                distance = location_vector.length()  # 相对距离
+                # 根据向量判断other_actor是否在actor的前方一定范围内
+                if actor_froward_vector.dot(other_actor_location - actor_location) > 0 \
+                        and distance < max_distance:
+                    front_vehicles_count += 1
+                    # 计算相对速度在距离上的投影
+                    rel_vel_projection = velocity_vector.dot(location_vector) / location_vector.length()
+                    # calculate time to collision
+                    if rel_vel_projection > 0:
+                        ttc = min(ttc, distance / rel_vel_projection)
+                    # 计算actor速度在距离上的投影
+                    actor_vel_projection = actor_velocity_vector.dot(location_vector) / location_vector.length()
+                    if actor_vel_projection > 0:
+                        thw = min(thw, distance / actor_vel_projection)
+                    # 记录相对速度、相对距离
+                    rel_velocity = max(rel_velocity, rel_vel_projection)
+                    rel_distance = min(rel_distance, distance)
+
+        if front_vehicles_count == 0:
+            ttc = None
+            thw = None
+            rel_distance = None
+            rel_velocity = None
+
+        result_dict = {
+            "ttc": ttc,
+            "thw": thw,
+            "rel_velocity": rel_velocity,
+            "rel_distance": rel_distance,
+            "front_vehicles_count": front_vehicles_count
+        }
+
+        CarlaDataProvider._car_follow_data_map[actor.id] = result_dict
+
+        return result_dict
+
+    @staticmethod
     def cleanup():
         """
         Cleanup and remove all entries from all dictionaries
@@ -879,3 +986,8 @@ class CarlaDataProvider(object):  # pylint: disable=too-many-public-methods
         CarlaDataProvider._rng = random.RandomState(CarlaDataProvider._random_seed)
         CarlaDataProvider._grp = None
         CarlaDataProvider._runtime_init_flag = False
+
+        # OSG
+        CarlaDataProvider._car_follow_data_map.clear()
+        CarlaDataProvider._actor_velocity_vector_map.clear()
+        

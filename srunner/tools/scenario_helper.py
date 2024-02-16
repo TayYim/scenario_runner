@@ -12,6 +12,7 @@ Summary of useful helper functions for scenarios
 import math
 import shapely.geometry
 import shapely.affinity
+from scipy.signal import savgol_filter
 
 import numpy as np
 
@@ -830,3 +831,104 @@ class RotatedRectangle(object):
         Obtain a intersection point between two contour.
         """
         return self.get_contour().intersection(other.get_contour())
+
+def transform_world_vector_to_local(transform, vector):
+    """
+    Transform global vector3D to local.
+    """
+    if transform is not None:
+        local_vector = carla.Vector3D()
+        forward_vector = transform.get_forward_vector()
+        right_vector = transform.get_right_vector()
+        up_vector = transform.get_up_vector()
+
+        local_vector.x = vector.dot(forward_vector)/forward_vector.length()
+        local_vector.y = vector.dot(right_vector)/right_vector.length()
+        local_vector.z = vector.dot(up_vector)/up_vector.length()
+
+        return local_vector
+    else:
+        return carla.Vector3D()
+
+
+def unit_converter(value, unit1, unit2):
+    """Convert value from unit1 to unit2
+
+    Args:
+        value (float): input value
+        unit1 (str): source unit
+        unit2 (str): target unit
+
+    Returns:
+        float: output value in unit2
+    """
+    result = value
+    units_list = ['m/s', 'km/h', 'mph']
+
+    if unit1 not in units_list or unit2 not in units_list:
+        print("Wrong unit:{}->{}".format(unit1, unit2))
+        return None
+
+    if unit1 == unit2:
+        return result
+
+    if unit1 == 'm/s' and unit2 == 'km/h':
+        result = value*3.6
+    elif unit1 == 'km/h' and unit2 == 'm/s':
+        result = value/3.6
+    elif unit1 == 'mph' and unit2 == 'km/h':
+        result = value*1.60934
+    elif unit1 == 'km/h' and unit2 == 'mph':
+        result = value*0.6213711922
+    elif unit1 == 'mph' and unit2 == 'm/s':
+        result = value*0.44704
+    elif unit1 == 'm/s' and unit2 == 'mph':
+        result = value*2.23693629
+
+    return result
+
+
+def adaptive_savgol_filter(data, window_size=51, poly_order=3):
+    """Adaptive Savitzky-Golay filter
+
+    Args:
+        data (list): input data
+        window_size (int, optional): window size. Defaults to 51. 必须是基数, 小于数据长度
+        poly_order (int, optional): polynomial order. Defaults to 3. 必须小于window_size
+
+    Returns:
+        list: filtered data
+    """
+    # 如果数据长度小于窗口长度的一半，则直接返回原始数据
+    if len(data) < window_size/2:
+        return data
+
+    if window_size > len(data):
+        window_size = len(data) - 2
+    if window_size % 2 == 0:
+        window_size += 1
+
+    return savgol_filter(data, window_size, poly_order)
+
+def adaptive_gradient(data1, data2):
+    """Adaptive Gradient
+
+    Args:
+        data1 (list): data1
+        data2 (list): data2
+
+    Returns:
+        list: gradient
+    """
+    if len(data1) != len(data2):
+        print("data1 and data2 must have the same length")
+        return []
+
+    if len(data1)==0 or len(data2)==0:
+        print("data1 or data2 is empty")
+        return []
+
+    gradient = np.gradient(data1, data2)
+
+    return gradient
+
