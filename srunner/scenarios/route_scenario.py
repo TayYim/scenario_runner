@@ -284,7 +284,7 @@ class RouteScenario(BasicScenario):
         behavior.add_child(scenario_triggerer)  # Tick the ScenarioTriggerer before the scenarios
 
         # Add the Background Activity
-        behavior.add_child(BackgroundBehavior(self.ego_vehicles[0], self.route, name="BackgroundActivity"))
+        # behavior.add_child(BackgroundBehavior(self.ego_vehicles[0], self.route, name="BackgroundActivity"))
 
         behavior.add_children(scenario_behaviors)
         return behavior
