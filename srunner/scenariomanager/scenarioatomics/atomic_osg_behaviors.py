@@ -189,8 +189,14 @@ class OASDataCollector(AtomicBehavior):
 
         if collision_flag:
             min_ttc = 0
+        elif len(self._data_dict["ttc"]) == 0:
+            min_ttc = 10
         else:
-            min_ttc = min([ttc for ttc in self._data_dict["ttc"] if ttc is not None])
+            valid_ttcs = [ttc for ttc in self._data_dict["ttc"] if ttc is not None]
+            if len(valid_ttcs) == 0:
+                min_ttc = 10
+            else:
+                min_ttc = min(valid_ttcs)
 
         collision_status = py_trees.blackboard.Blackboard().get("DC_COLLISION_STATUS")
 
