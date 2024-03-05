@@ -102,9 +102,16 @@ class OSG_CutIn_One(BasicScenario):
         """
         Custom initialization
         """
-        self._npc_waypoint = self._reference_waypoint.get_left_lane().next(
-            self._relative_p
-        )[0]
+        if self._relative_p > 0:
+            self._npc_waypoint = self._reference_waypoint.get_left_lane().next(
+                self._relative_p
+            )[0]
+        elif self._relative_p < 0:
+            self._npc_waypoint = self._reference_waypoint.get_left_lane().previous(
+                abs(self._relative_p)
+            )[0]
+        else:
+            self._npc_waypoint = self._reference_waypoint.get_left_lane()
         self._npc_transform = self._npc_waypoint.transform
 
         self._cut_in_vehicle = CarlaDataProvider.request_new_actor(

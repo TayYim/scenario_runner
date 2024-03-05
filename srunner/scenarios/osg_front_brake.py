@@ -20,27 +20,11 @@ from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.scenarioatomics.atomic_behaviors import (
     Idle,
     ActorTransformSetter,
-    ChangeAutoPilot,
     ConstantVelocityAgentBehavior,
-    HandBrakeVehicle,
-    ActorDestroy,
-    StopVehicle,
-    SyncArrivalWithAgent,
-    CutIn,
-    SetAdaptiveInitSpeed,
-    AdaptiveConstantVelocityAgentBehavior,
     SetInitSpeed,
-    AccelerateToVelocity,
-)
-from srunner.scenariomanager.scenarioatomics.atomic_trigger_conditions import (
-    DriveDistance,
 )
 from srunner.scenarios.basic_scenario import BasicScenario
-from srunner.scenariomanager.scenarioatomics.atomic_criteria import CollisionTest
 
-from srunner.tools.background_manager import StopFrontVehicles, StartFrontVehicles
-
-from srunner.tools.scenario_helper import generate_target_waypoint
 
 from srunner.scenariomanager.scenarioatomics.atomic_osg_behaviors import (
     OASDataCollector,
@@ -50,16 +34,6 @@ from srunner.scenariomanager.scenarioatomics.atomic_osg_behaviors import (
 def get_value_parameter(config, name, p_type, default):
     if name in config.other_parameters:
         return p_type(config.other_parameters[name]["value"])
-    else:
-        return default
-
-
-def get_interval_parameter(config, name, p_type, default):
-    if name in config.other_parameters:
-        return [
-            p_type(config.other_parameters[name]["from"]),
-            p_type(config.other_parameters[name]["to"]),
-        ]
     else:
         return default
 
@@ -161,11 +135,6 @@ class OSG_FrontBrake(BasicScenario):
         self.other_actors.append(actor)
 
     def _create_behavior(self):
-        """
-        Uses the Background Activity to force a hard break on the vehicles in front of the actor,
-        then waits for a bit to check if the actor has collided. After a set duration,
-        the front vehicles will resume their movement
-        """
 
         npc = self.other_actors[0]
 
@@ -205,8 +174,6 @@ class OSG_FrontBrake(BasicScenario):
         brake_behavior = py_trees.composites.Parallel(
             policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE
         )
-
-        # brake_behavior.add_child(HandBrakeVehicle(npc, 1))
 
         brake_behavior.add_child(
             ConstantVelocityAgentBehavior(npc, self._npc_target_location, 0)
