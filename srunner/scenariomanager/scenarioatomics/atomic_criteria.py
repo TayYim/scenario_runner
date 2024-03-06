@@ -387,16 +387,17 @@ class CollisionTest(Criterion):
         self.test_status = "FAILURE"
         self.actual_value += 1
 
-        # Set global variables for DataCollector
-        py_trees.blackboard.Blackboard().set("DC_COLLISION_FLAG", True, True)
+        # Set global variables for DataCollector, only consider vehicles
+        if 'vehicle' in event.other_actor.type_id:
+            py_trees.blackboard.Blackboard().set("DC_COLLISION_FLAG", True, True)
 
-        other_actor_transform = CarlaDataProvider.get_transform(event.other_actor)
-        other_actor_location = other_actor_transform.location
-        other_actor_v = CarlaDataProvider.get_velocity(event.other_actor)
-        other_actor_yaw = other_actor_transform.rotation.yaw
-        status_dict = {"EGO": [actor_location.x, actor_location.y, CarlaDataProvider.get_velocity(self.actor), CarlaDataProvider.get_transform(self.actor).rotation.yaw],
-                       "NPC": [other_actor_location.x, other_actor_location.y, other_actor_v, other_actor_yaw]}
-        py_trees.blackboard.Blackboard().set("DC_COLLISION_STATUS", status_dict, True)
+            other_actor_transform = CarlaDataProvider.get_transform(event.other_actor)
+            other_actor_location = other_actor_transform.location
+            other_actor_v = CarlaDataProvider.get_velocity(event.other_actor)
+            other_actor_yaw = other_actor_transform.rotation.yaw
+            status_dict = {"EGO": [actor_location.x, actor_location.y, CarlaDataProvider.get_velocity(self.actor), CarlaDataProvider.get_transform(self.actor).rotation.yaw],
+                        "NPC": [other_actor_location.x, other_actor_location.y, other_actor_v, other_actor_yaw]}
+            py_trees.blackboard.Blackboard().set("DC_COLLISION_STATUS", status_dict, True)
 
         self._collision_time = GameTime.get_time()
         self._collision_location = actor_location
