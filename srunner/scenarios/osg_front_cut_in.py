@@ -119,6 +119,7 @@ class OSG_CutIn_One(BasicScenario):
 
         self._trigger_location = config.trigger_points[0].location
         self._reference_waypoint = self._map.get_waypoint(self._trigger_location)
+        self._lc_target_waypoint = self._reference_waypoint.next(300)[0]
 
         super().__init__(
             "OSG_CutIn_1",
@@ -192,7 +193,11 @@ class OSG_CutIn_One(BasicScenario):
             )
         )
         cut_in_movement.add_child(
-            BasicAgentBehavior(self._cut_in_vehicle, target_speed=self._lc_target_v*3.6)
+            BasicAgentBehavior(
+                self._cut_in_vehicle,
+                target_speed=self._lc_target_v * 3.6,
+                target_location=self._lc_target_waypoint.transform.location,
+            )
         )
         npc_behavior.add_child(cut_in_movement)
 
@@ -259,6 +264,8 @@ class OSG_CutIn_Two(BasicScenario):
 
         self._trigger_location = config.trigger_points[0].location
         self._reference_waypoint = self._map.get_waypoint(self._trigger_location)
+        self._lc_target_waypoint = self._reference_waypoint.next(300)[0]
+        self._follow_target_waypoint = self._lc_target_waypoint.get_left_lane()
 
         super().__init__(
             "OSG_CutIn_2",
@@ -345,14 +352,19 @@ class OSG_CutIn_Two(BasicScenario):
             )
         )
         cut_in_movement.add_child(
-            BasicAgentBehavior(self._cut_in_vehicle, target_speed=self._lc_target_v*3.6)
+            BasicAgentBehavior(
+                self._cut_in_vehicle,
+                target_speed=self._lc_target_v * 3.6,
+                target_location=self._lc_target_waypoint.transform.location,
+            )
         )
         npc_behavior.add_child(cut_in_movement)
 
         npc_behavior.add_child(
             BasicAgentBehavior(
                 self._follow_vehicle,
-                target_speed=self._follow_target_v*3.6,
+                target_speed=self._follow_target_v * 3.6,
+                target_location=self._follow_target_waypoint.transform.location,
             )
         )
         npc_behavior.add_child(
