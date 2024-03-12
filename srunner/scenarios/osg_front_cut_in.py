@@ -16,16 +16,12 @@ from srunner.scenariomanager.scenarioatomics.atomic_behaviors import (
     SetInitSpeed,
     AccelerateToVelocity,
     BasicAgentBehavior,
+    ActorDestroy,
 )
 from srunner.scenarios.basic_scenario import BasicScenario
 from srunner.scenariomanager.scenarioatomics.atomic_criteria import CollisionTest
 from srunner.scenariomanager.scenarioatomics.atomic_trigger_conditions import (
     DriveDistance,
-)
-
-
-from srunner.scenariomanager.scenarioatomics.atomic_osg_behaviors import (
-    OASDataCollector,
 )
 
 
@@ -119,7 +115,7 @@ class OSG_CutIn_One(BasicScenario):
 
         self._trigger_location = config.trigger_points[0].location
         self._reference_waypoint = self._map.get_waypoint(self._trigger_location)
-        self._lc_target_waypoint = self._reference_waypoint.next(300)[0]
+        self._lc_target_waypoint = self._reference_waypoint.next(250)[0]
 
         super().__init__(
             "OSG_CutIn_1",
@@ -153,10 +149,6 @@ class OSG_CutIn_One(BasicScenario):
         root = py_trees.composites.Parallel(
             "Main Behavior", policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE
         )
-
-        root.add_child(OASDataCollector(self.ego_vehicles[0], name="EGOData"))
-
-        root.add_child(OASDataCollector(self._cut_in_vehicle, name="NPCData"))
 
         behavior = py_trees.composites.Sequence("HighwayCutIn")
 
@@ -202,10 +194,12 @@ class OSG_CutIn_One(BasicScenario):
         npc_behavior.add_child(cut_in_movement)
 
         npc_behavior.add_child(
-            DriveDistance(self._cut_in_vehicle, 300)
+            DriveDistance(self._cut_in_vehicle, 120)
         )  # Long enough to finish the scenario
 
         behavior.add_child(npc_behavior)
+
+        behavior.add_child(ActorDestroy(self._cut_in_vehicle))
 
         return root
 
@@ -264,7 +258,7 @@ class OSG_CutIn_Two(BasicScenario):
 
         self._trigger_location = config.trigger_points[0].location
         self._reference_waypoint = self._map.get_waypoint(self._trigger_location)
-        self._lc_target_waypoint = self._reference_waypoint.next(300)[0]
+        self._lc_target_waypoint = self._reference_waypoint.next(200)[0]
         self._follow_target_waypoint = self._lc_target_waypoint.get_left_lane()
 
         super().__init__(
@@ -309,10 +303,6 @@ class OSG_CutIn_Two(BasicScenario):
             "Main Behavior", policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE
         )
 
-        root.add_child(OASDataCollector(self.ego_vehicles[0], name="EGOData"))
-
-        # root.add_child(OASDataCollector(self._cut_in_vehicle, name="NPCData"))
-
         behavior = py_trees.composites.Sequence("HighwayCutIn")
 
         root.add_child(behavior)
@@ -335,7 +325,7 @@ class OSG_CutIn_Two(BasicScenario):
 
         # Cut in
         npc_behavior = py_trees.composites.Parallel(
-            policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ALL, name="Cut in behavior"
+            policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE, name="Cut in behavior"
         )
 
         cut_in_movement = py_trees.composites.Sequence()
@@ -368,10 +358,12 @@ class OSG_CutIn_Two(BasicScenario):
             )
         )
         npc_behavior.add_child(
-            DriveDistance(self._follow_vehicle, 300)
+            DriveDistance(self._follow_vehicle, 200)
         )  # Long enough to finish the scenario
 
         behavior.add_child(npc_behavior)
+        behavior.add_child(ActorDestroy(self._cut_in_vehicle))
+        behavior.add_child(ActorDestroy(self._follow_vehicle))
         return root
 
     def _create_test_criteria(self):

@@ -26,11 +26,6 @@ from srunner.scenariomanager.scenarioatomics.atomic_behaviors import (
 from srunner.scenarios.basic_scenario import BasicScenario
 
 
-from srunner.scenariomanager.scenarioatomics.atomic_osg_behaviors import (
-    OASDataCollector,
-)
-
-
 def get_value_parameter(config, name, p_type, default):
     if name in config.other_parameters:
         return p_type(config.other_parameters[name]["value"])
@@ -141,8 +136,6 @@ class OSG_FrontBrake(BasicScenario):
         root = py_trees.composites.Parallel(
             "Main Behavior", policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE
         )
-
-        root.add_child(OASDataCollector(self.ego_vehicles[0], name="EGOData"))
 
         behavior = py_trees.composites.Sequence("Sequence Behavior")
 
