@@ -23,6 +23,9 @@ from srunner.scenariomanager.scenarioatomics.atomic_criteria import CollisionTes
 from srunner.scenariomanager.scenarioatomics.atomic_trigger_conditions import (
     DriveDistance,
 )
+from srunner.scenariomanager.scenarioatomics.atomic_osg_behaviors import (
+    OASDataCollector,
+)
 
 
 def get_value_parameter(config, name, p_type, default):
@@ -302,6 +305,8 @@ class OSG_CutIn_Two(BasicScenario):
         root = py_trees.composites.Parallel(
             "Main Behavior", policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE
         )
+
+        # root.add_child(OASDataCollector(self._follow_vehicle, name="FollowData"))
 
         behavior = py_trees.composites.Sequence("HighwayCutIn")
 
