@@ -23,9 +23,6 @@ from srunner.scenariomanager.scenarioatomics.atomic_criteria import CollisionTes
 from srunner.scenariomanager.scenarioatomics.atomic_trigger_conditions import (
     DriveDistance,
 )
-from srunner.scenariomanager.scenarioatomics.atomic_osg_behaviors import (
-    OASDataCollector,
-)
 
 
 def get_value_parameter(config, name, p_type, default):
@@ -82,7 +79,7 @@ def create_vehicle_left_and_move_underground(waypoint):
     return vehicle
 
 
-class OSG_CutIn_One(BasicScenario):
+class CLCutInOne(BasicScenario):
     """
     This class holds everything required for a scenario in which another vehicle runs a red light
     in front of the ego, forcing it to react. This vehicles are 'special' ones such as police cars,
@@ -121,7 +118,7 @@ class OSG_CutIn_One(BasicScenario):
         self._lc_target_waypoint = self._reference_waypoint.next(250)[0]
 
         super().__init__(
-            "OSG_CutIn_1",
+            "CLCutInOne",
             ego_vehicles,
             config,
             world,
@@ -222,7 +219,7 @@ class OSG_CutIn_One(BasicScenario):
         self.remove_all_actors()
 
 
-class OSG_CutIn_Two(BasicScenario):
+class CLCutInTwo(BasicScenario):
     """
     This class holds everything required for a scenario in which another vehicle runs a red light
     in front of the ego, forcing it to react. This vehicles are 'special' ones such as police cars,
@@ -265,7 +262,7 @@ class OSG_CutIn_Two(BasicScenario):
         self._follow_target_waypoint = self._lc_target_waypoint.get_left_lane()
 
         super().__init__(
-            "OSG_CutIn_2",
+            "CLCutInTwo",
             ego_vehicles,
             config,
             world,

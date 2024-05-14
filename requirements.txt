@@ -10,4 +10,3 @@ opencv-python==4.2.0.32
 matplotlib
 six
 simple-watchdog-timer
-scipy==1.7.3

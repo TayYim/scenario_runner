@@ -21,9 +21,6 @@ from srunner.scenariomanager.scenarioatomics.atomic_criteria import CollisionTes
 from srunner.scenariomanager.scenarioatomics.atomic_trigger_conditions import (
     DriveDistance,
 )
-from srunner.scenariomanager.scenarioatomics.atomic_osg_behaviors import (
-    OASDataCollector,
-)
 
 
 def get_value_parameter(config, name, p_type, default):
@@ -70,7 +67,7 @@ def create_vehicle_and_move_underground(waypoint):
     return vehicle
 
 
-class OSG_Junction(BasicScenario):
+class CLJunction(BasicScenario):
     """
     This class holds everything required for a scenario in which another vehicle runs a red light
     in front of the ego, forcing it to react. This vehicles are 'special' ones such as police cars,
@@ -121,7 +118,7 @@ class OSG_Junction(BasicScenario):
         self._ego_pre_drive_distance = gap_trigger_center - self._r_ego
 
         super().__init__(
-            "OSG_Junction",
+            "CLJunction",
             ego_vehicles,
             config,
             world,

@@ -7,30 +7,17 @@
 
 import py_trees
 
-import carla
 
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
-from srunner.scenariomanager.scenarioatomics.atomic_behaviors import (
-    ActorTransformSetter,
-    CutIn,
-    SetInitSpeed,
-    AccelerateToVelocity,
-    BasicAgentBehavior,
-    ActorDestroy,
-)
+
 from srunner.scenarios.basic_scenario import BasicScenario
-from srunner.scenariomanager.scenarioatomics.atomic_criteria import CollisionTest
-from srunner.scenariomanager.scenarioatomics.atomic_trigger_conditions import (
-    DriveDistance,
+
+from srunner.scenariomanager.scenarioatomics.atomic_cl_behaviors import (
+    DataCollector,
 )
 
 
-from srunner.scenariomanager.scenarioatomics.atomic_osg_behaviors import (
-    OASDataCollector,
-)
-
-
-class OSG_Data_Collect(BasicScenario):
+class CLDataCollect(BasicScenario):
     """
     This class holds everything required for a scenario in which another vehicle runs a red light
     in front of the ego, forcing it to react. This vehicles are 'special' ones such as police cars,
@@ -56,7 +43,7 @@ class OSG_Data_Collect(BasicScenario):
         self.timeout = timeout
 
         super().__init__(
-            "OSG_Data_Collect",
+            "CLDataCollect",
             ego_vehicles,
             config,
             world,
@@ -75,7 +62,7 @@ class OSG_Data_Collect(BasicScenario):
             "Main Behavior", policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE
         )
 
-        root.add_child(OASDataCollector(self.ego_vehicles[0], name="EGOData"))
+        root.add_child(DataCollector(self.ego_vehicles[0], name="EGOData"))
 
         return root
 

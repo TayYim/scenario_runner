@@ -8,7 +8,6 @@ from srunner.scenariomanager.timer import GameTime
 import py_trees
 from srunner.tools.scenario_helper import (
     transform_world_vector_to_local,
-    adaptive_savgol_filter,
     adaptive_gradient,
 )
 import os
@@ -17,17 +16,17 @@ import datetime
 import json
 
 
-class OASDataCollector(AtomicBehavior):
+class DataCollector(AtomicBehavior):
     """
     This class contains a data collector behavior
     """
 
-    def __init__(self, actor=None, name="OSGDataCollector"):
+    def __init__(self, actor=None, name="DataCollector"):
         """
         Setup
         """
         self.task_id = name + "_" + datetime.datetime.now().strftime("%m%d%H%M%S")
-        self.finished = False  # 用于标记是否已经执行过 terminate 函数
+        self.finished = False  # Mark whether the terminate() has been executed
 
         self._data_dict = {
             "game_time": [],
@@ -49,14 +48,14 @@ class OASDataCollector(AtomicBehavior):
             "roll": [],
             "pitch": [],
             "yaw": [],
-            "ttc": [],  # 如果不存在前车，则为None
-            "thw": [],  # 如果不存在前车，则为None
-            "relative_distance": [],  # 如果不存在前车，则为None
-            "relative_velocity": [],  # 如果不存在前车，则为None
+            "ttc": [],  # None if there is no preceding vehicle
+            "thw": [],  # None if there is no preceding vehicle
+            "relative_distance": [],  # None if there is no preceding vehicle
+            "relative_velocity": [],  # None if there is no preceding vehicle
             "front_vehicles_count": [],
-            "throttle": [],  # 油门，0-1
-            "brake": [],  # 刹车 0-1
-            "steer": [],  # 方向 -1 - 1
+            "throttle": [],  # [0,1]
+            "brake": [],  # [0,1]
+            "steer": [],  # [-1,1]
         }
 
         # Init global variables
@@ -66,14 +65,14 @@ class OASDataCollector(AtomicBehavior):
             "DC_COLLISION_STATUS", {"EGO": [], "NPC": []}, True
         )
 
-        super(OASDataCollector, self).__init__(name, actor)
+        super(DataCollector, self).__init__(name, actor)
 
     def initialise(self):
         """
         Set up
         """
         # maybe something to do
-        super(OASDataCollector, self).initialise()
+        super(DataCollector, self).initialise()
 
     def update(self):
         """
@@ -142,33 +141,23 @@ class OASDataCollector(AtomicBehavior):
         return new_status
 
     def get_final_data(self):
-        # 对self._data_dict的数据进行处理
+        # Process self._data_dict
 
-        # 对加速度和加速度变化率进行滤波处理
-        FILTER_WINDOW_SIZE = 41  # 最开始的加速度数据可能不准确，因此需要过滤掉。由于jerk是加速度的差分计算出来的，所以需要多过滤一位
+        # Get acc and jerk
         direction_list = ["", "_x", "_y", "_z"]
         for direction in direction_list:
-            # 处理速度
-            # 速度不需要滤波，速度采用原始的结果
+
             vel_data = self._data_dict["velocity" + direction]
             vel_data = [round(float(vel), 2) for vel in vel_data]
             self._data_dict["velocity" + direction] = vel_data
 
-            # 处理加速度
             acc_data = adaptive_gradient(vel_data, self._data_dict["game_time"])
-            acc_data = adaptive_savgol_filter(acc_data)
             acc_data = [round(float(acc), 2) for acc in acc_data]
             self._data_dict["acceleration" + direction] = acc_data
 
-            # 处理加速度变化率
             jerk_data = adaptive_gradient(acc_data, self._data_dict["game_time"])
-            jerk_data = adaptive_savgol_filter(jerk_data)
             jerk_data = [round(float(jerk), 2) for jerk in jerk_data]
             self._data_dict["jerk" + direction] = jerk_data
-
-            if len(self._data_dict["jerk" + direction]) >= FILTER_WINDOW_SIZE:
-                for i in range(FILTER_WINDOW_SIZE):
-                    self._data_dict["jerk" + direction][i] = 0.0
 
         return self._data_dict
 
@@ -209,11 +198,12 @@ class OASDataCollector(AtomicBehavior):
         driven_distance = round(driven_distance, 3)
 
         # save data
+        # TODO CL: add switch to save data
         # self._save_result_to_csv()
         self._save_epoch_result_to_json(
             collision_flag, min_ttc, driven_distance, collision_status
         )
-        super(OASDataCollector, self).terminate(new_status)
+        super(DataCollector, self).terminate(new_status)
 
     def _save_result_to_csv(self):
         """

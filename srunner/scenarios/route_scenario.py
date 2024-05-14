@@ -283,7 +283,8 @@ class RouteScenario(BasicScenario):
             self.ego_vehicles[0], self.route, blackboard_list, scenario_trigger_distance)
         behavior.add_child(scenario_triggerer)  # Tick the ScenarioTriggerer before the scenarios
 
-        # Add the Background Activity
+        # Background Activity is disabled for CarlaLoop
+        # Uncomment the following line to enable it
         # behavior.add_child(BackgroundBehavior(self.ego_vehicles[0], self.route, name="BackgroundActivity"))
 
         behavior.add_children(scenario_behaviors)
