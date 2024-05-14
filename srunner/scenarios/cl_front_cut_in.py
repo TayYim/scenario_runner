@@ -303,8 +303,6 @@ class CLCutInTwo(BasicScenario):
             "Main Behavior", policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE
         )
 
-        # root.add_child(OASDataCollector(self._follow_vehicle, name="FollowData"))
-
         behavior = py_trees.composites.Sequence("HighwayCutIn")
 
         root.add_child(behavior)
