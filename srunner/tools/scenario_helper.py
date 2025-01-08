@@ -893,13 +893,13 @@ def adaptive_savgol_filter(data, window_size=51, poly_order=3):
 
     Args:
         data (list): input data
-        window_size (int, optional): window size. Defaults to 51. 必须是基数, 小于数据长度
-        poly_order (int, optional): polynomial order. Defaults to 3. 必须小于window_size
+        window_size (int, optional): window size. Defaults to 51. 
+        poly_order (int, optional): polynomial order. Defaults to 3.
 
     Returns:
         list: filtered data
     """
-    # 如果数据长度小于窗口长度的一半，则直接返回原始数据
+    # If the length of the data is less than half of the window length, the original data is returned directly
     if len(data) < window_size/2:
         return data
 

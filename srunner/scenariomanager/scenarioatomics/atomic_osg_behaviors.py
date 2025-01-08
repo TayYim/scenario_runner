@@ -27,7 +27,7 @@ class OASDataCollector(AtomicBehavior):
         Setup
         """
         self.task_id = name + "_" + datetime.datetime.now().strftime("%m%d%H%M%S")
-        self.finished = False  # 用于标记是否已经执行过 terminate 函数
+        self.finished = False  # Use to mark whether the terminate function has been executed
 
         self._data_dict = {
             "game_time": [],
@@ -49,14 +49,14 @@ class OASDataCollector(AtomicBehavior):
             "roll": [],
             "pitch": [],
             "yaw": [],
-            "ttc": [],  # 如果不存在前车，则为None
-            "thw": [],  # 如果不存在前车，则为None
-            "relative_distance": [],  # 如果不存在前车，则为None
-            "relative_velocity": [],  # 如果不存在前车，则为None
+            "ttc": [],  # None if no front vehicle
+            "thw": [],  # None if no front vehicle
+            "relative_distance": [],  # None if no front vehicle
+            "relative_velocity": [],  # None if no front vehicle
             "front_vehicles_count": [],
-            "throttle": [],  # 油门，0-1
-            "brake": [],  # 刹车 0-1
-            "steer": [],  # 方向 -1 - 1
+            "throttle": [],  # 0-1
+            "brake": [],  # 0-1
+            "steer": [],  # -1 - 1
         }
 
         # Init global variables
@@ -142,25 +142,26 @@ class OASDataCollector(AtomicBehavior):
         return new_status
 
     def get_final_data(self):
-        # 对self._data_dict的数据进行处理
+        # Process the data in self._data_dict
 
-        # 对加速度和加速度变化率进行滤波处理
-        FILTER_WINDOW_SIZE = 41  # 最开始的加速度数据可能不准确，因此需要过滤掉。由于jerk是加速度的差分计算出来的，所以需要多过滤一位
+        # Process acceleration and jerk data
+        # At the beginning , the acceleration data may not be accurate, so it needs to be filtered out.
+        FILTER_WINDOW_SIZE = 41 
         direction_list = ["", "_x", "_y", "_z"]
         for direction in direction_list:
-            # 处理速度
-            # 速度不需要滤波，速度采用原始的结果
+            # Process velocity data
+            # Velocity does not need to be filtered, and the original result is used for velocity
             vel_data = self._data_dict["velocity" + direction]
             vel_data = [round(float(vel), 2) for vel in vel_data]
             self._data_dict["velocity" + direction] = vel_data
 
-            # 处理加速度
+            # Process acceleration data
             acc_data = adaptive_gradient(vel_data, self._data_dict["game_time"])
             acc_data = adaptive_savgol_filter(acc_data)
             acc_data = [round(float(acc), 2) for acc in acc_data]
             self._data_dict["acceleration" + direction] = acc_data
 
-            # 处理加速度变化率
+            # Process jerk data
             jerk_data = adaptive_gradient(acc_data, self._data_dict["game_time"])
             jerk_data = adaptive_savgol_filter(jerk_data)
             jerk_data = [round(float(jerk), 2) for jerk in jerk_data]
