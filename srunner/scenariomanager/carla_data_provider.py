@@ -73,6 +73,9 @@ class CarlaDataProvider(object):  # pylint: disable=too-many-public-methods
     # OSG
     _car_follow_data_map = {}  # Car follow data
     _actor_velocity_vector_map = {}
+    
+    # Planning encoding data
+    _planning_encoding = 0.0  # Default to neutral (straight) planning
 
     @staticmethod
     def register_actor(actor, transform=None):
@@ -1005,4 +1008,27 @@ class CarlaDataProvider(object):  # pylint: disable=too-many-public-methods
         # OSG
         CarlaDataProvider._car_follow_data_map.clear()
         CarlaDataProvider._actor_velocity_vector_map.clear()
+        
+    @staticmethod
+    def set_planning_encoding(value):
+        """
+        Sets the planning encoding value for the ego vehicle
+        
+        Args:
+            value (float): Planning encoding value between -1.0 and 1.0
+                -1.0: Strong right turn/lane change
+                0.0: Straight planning
+                1.0: Strong left turn/lane change
+        """
+        CarlaDataProvider._planning_encoding = value
+
+    @staticmethod
+    def get_planning_encoding():
+        """
+        Gets the current planning encoding value for the ego vehicle
+        
+        Returns:
+            float: Planning encoding value between -1.0 and 1.0
+        """
+        return CarlaDataProvider._planning_encoding
         

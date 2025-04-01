@@ -262,6 +262,18 @@ class SPECDataCollector(AtomicBehavior):
             # Mark if this is the ego vehicle
             self._data_structure["is_ego"].append(vehicle.id == ego_id)
         
+        # Get planning encoding from CarlaDataProvider
+        planning_encoding = CarlaDataProvider.get_planning_encoding()
+        
+        # Store the planning encoding value for analysis and visualization
+        if ego_id is not None:
+            if "planning_encoding" not in self._data_structure:
+                self._data_structure["planning_encoding"] = []
+            
+            # Add planning encoding value for this timestep
+            # We'll only store it once per timestep, associated with the ego vehicle
+            self._data_structure["planning_encoding"].append(planning_encoding)
+        
         # Calculate SEE encoding using the latest collected data
         try:
             # Prepare road borders for SEE calculation if available
@@ -315,9 +327,9 @@ class SPECDataCollector(AtomicBehavior):
             )
             
             # Debug printing
-            print("\n===== SEE Matrix (Timestep: {}) =====".format(game_time))
-            print(see_matrix)
-            print("Number of points considered: {}".format(len(points)))
+            # print("\n===== SEE Matrix (Timestep: {}) =====".format(game_time))
+            # print(see_matrix)
+            # print("Number of points considered: {}".format(len(points)))
             
             # Visualize using the same approach as in run_highway_scenario.py
             self.visualize_results(see_matrix, points, game_time)
@@ -386,9 +398,35 @@ class SPECDataCollector(AtomicBehavior):
             
             # Update both visualizations
             plt.pause(0.001)
+
+            # Get the planning encoding from CarlaDataProvider instead of calculating it
+            planning_encoding = CarlaDataProvider.get_planning_encoding()
+            
+            # You can add visualization of planning encoding here if needed
+            # For example, adding text to a plot or a new plot
+            if planning_encoding is not None:
+                plt.figure('Planning Encoding')
+                plt.clf()
+                
+                # Create a simple horizontal bar representing the planning encoding value
+                plt.barh(['Planning Direction'], [planning_encoding], color='blue' if planning_encoding > 0 else 'red')
+                plt.xlim(-1.1, 1.1)  # Set limits to match planning encoding range
+                plt.axvline(x=0, color='black', linestyle='-', alpha=0.3)  # Center line
+                
+                # Add labels
+                plt.title(f'Planning Encoding - Time: {game_time:.2f}s')
+                plt.xlabel('Left (-1) <--> Right (1)')
+                
+                # Add text showing the exact value
+                plt.text(planning_encoding, 0, f'{planning_encoding:.2f}', 
+                         ha='center', va='center', fontweight='bold')
+                
+                plt.pause(0.001)
             
         except Exception as e:
             print(f"Error in visualization: {e}")
+            
+        return planning_encoding
 
     def terminate(self, new_status):
         """
