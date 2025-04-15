@@ -119,7 +119,7 @@ class SPECDataCollector(AtomicBehavior):
     - Ego vehicle marker
     """
 
-    def __init__(self, actor=None, name="SPECDataCollector", lx=10, ly=60, nrad=4, nring=3):
+    def __init__(self, actor=None, name="SPECDataCollector", lx=10, ly=60, nrad=4, nring=3, visualize_planning_arrow=True):
         """
         Setup for SPEC data collection
         """
@@ -136,6 +136,9 @@ class SPECDataCollector(AtomicBehavior):
         self.ly = ly  # Perception area length y
         self.nrad = nrad  # Number of radial divisions
         self.nring = nring  # Number of rings
+        
+        # Visualization flag
+        self.visualize_planning_arrow = visualize_planning_arrow
         
         # Initialize visualization figures
         # We don't create the figures here - they'll be created when needed
@@ -273,6 +276,45 @@ class SPECDataCollector(AtomicBehavior):
             # Add planning encoding value for this timestep
             # We'll only store it once per timestep, associated with the ego vehicle
             self._data_structure["planning_encoding"].append(planning_encoding)
+            
+            # Visualize planning encoding in CARLA window if enabled and not moving straight
+            if self.visualize_planning_arrow and planning_encoding is not None and self._actor and abs(planning_encoding) >= 0.01:
+                try:
+                    world = CarlaDataProvider.get_world()
+                    ego_transform = self._actor.get_transform()
+                    ego_location = ego_transform.location
+                    forward_vec = ego_transform.get_forward_vector()
+                    right_vec = ego_transform.get_right_vector()
+
+                    arrow_length = 4.0  # Length of the arrow
+                    lateral_scale = 1.0  # How much the arrow deviates sideways
+                    vertical_offset = 0.2 # Draw arrow slightly above the car
+
+                    start_point = ego_location + carla.Location(z=vertical_offset)
+
+                    # Calculate direction based on planning encoding
+                    # Positive encoding -> turn right, Negative encoding -> turn left
+                    direction_vec = forward_vec + right_vec * planning_encoding * lateral_scale
+                    end_point = start_point + direction_vec.make_unit_vector() * arrow_length
+
+                    # Choose color based on direction
+                    color = carla.Color(r=0, g=0, b=255) # Blue for right (positive)
+                    if planning_encoding < 0:
+                        color = carla.Color(r=255, g=0, b=0) # Red for left (negative)
+                    # No need for white color check now as we skip drawing if abs(planning_encoding) < 0.01
+                    # elif abs(planning_encoding) < 0.01: # Nearly straight
+                    #    color = carla.Color(r=255, g=255, b=255) # White for straight
+
+                    world.debug.draw_arrow(
+                        start_point,
+                        end_point,
+                        arrow_size=0.3,
+                        thickness=0.4,
+                        life_time=0.1, # Short lifetime to update each frame
+                        color=color
+                    )
+                except Exception as e:
+                    print(f"Error drawing planning encoding arrow: {e}")
         
         # Calculate SEE encoding using the latest collected data
         try:
@@ -332,7 +374,7 @@ class SPECDataCollector(AtomicBehavior):
             # print("Number of points considered: {}".format(len(points)))
             
             # Visualize using the same approach as in run_highway_scenario.py
-            self.visualize_results(see_matrix, points, game_time)
+            # self.visualize_results(see_matrix, points, game_time)
             
         except Exception as e:
             print(f"Error calculating SEE encoding: {e}")
@@ -395,9 +437,6 @@ class SPECDataCollector(AtomicBehavior):
                 limit_y = max(self.ly, 15)
                 plt.xlim(-limit_x/2, limit_x/2)
                 plt.ylim(-limit_y/2, limit_y/2)
-            
-            # Update both visualizations
-            plt.pause(0.001)
 
             # Get the planning encoding from CarlaDataProvider instead of calculating it
             planning_encoding = CarlaDataProvider.get_planning_encoding()
@@ -421,7 +460,8 @@ class SPECDataCollector(AtomicBehavior):
                 plt.text(planning_encoding, 0, f'{planning_encoding:.2f}', 
                          ha='center', va='center', fontweight='bold')
                 
-                plt.pause(0.001)
+            # Update all visualizations
+            plt.pause(0.001)
             
         except Exception as e:
             print(f"Error in visualization: {e}")
