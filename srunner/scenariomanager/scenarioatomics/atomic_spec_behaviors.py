@@ -29,8 +29,9 @@ spec_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..
 if spec_path not in sys.path:
     sys.path.append(spec_path)
 
-# Import compute_see_carla from hsr_calculation
-from src.data_process.hsr_calculation import compute_see_carla
+# Import compute_see_carla and compute_dsee_carla from hsr_calculation
+from src.data_process.hsr_calculation import compute_see_carla, compute_dsee_carla
+from src.utils.commonroad_handler import CommonRoadHandler
 
 
 def find_leftmost_lane(waypoint):
@@ -157,14 +158,26 @@ class SPECDataCollector(AtomicBehavior):
             "lane_id": [],
             "steering": [],
             "acceleration": [],
-            "is_ego": []
+            "is_ego": [],
+            "ttr": []
         }
+        
+        # Add TTR tracking
+        self._data_structure["ttr"] = []
         
         # Add road border tracking
         self.road_borders = {
             "left_border": None,
             "right_border": None
         }
+        
+        # Initialize CommonRoadHandler instance
+        # Get the directory of the current script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        # Construct the relative path to the scenario file (going up one directory)
+        scenario_path = os.path.join(script_dir, '..', '..', '..', '..', '..', 'src', 'configs', 'map_layout', 'town04_route98_interpolated.xml')
+        scenario_path = os.path.normpath(scenario_path) # Normalize the path (e.g., remove '..')
+        self._commonroad_handler = CommonRoadHandler(scenario_path=scenario_path, debug=False, visualize=True)
         
         # Initialize base class
         super(SPECDataCollector, self).__init__(name, actor)
@@ -378,6 +391,27 @@ class SPECDataCollector(AtomicBehavior):
             
         except Exception as e:
             print(f"Error calculating SEE encoding: {e}")
+
+        # Calculate DSEE/TTR using compute_dsee_carla
+        try:
+            # Calculate TTR using the same collected data
+            ttr_value = compute_dsee_carla(
+                collected_data=self._data_structure,
+                ego_id=ego_id,
+                commonRoadHandler=self._commonroad_handler
+            )
+            
+            # Store TTR value in data structure
+            self._data_structure["ttr"].append(ttr_value)
+            
+            # Debug print the TTR value
+            # if ttr_value < 5: # For debugging, only print TTR value if it's less than 5
+            print(f"===== TTR Value at time {game_time:.2f}: {ttr_value:.2f} =====")
+            
+        except Exception as e:
+            print(f"Error calculating TTR/DSEE value: {e}")
+            # Add a placeholder value to maintain data structure alignment
+            self._data_structure["ttr"].append(None)
 
         return new_status
 
