@@ -221,6 +221,14 @@ class SPEC_Random(BasicScenario):
         self._min_speed = get_value_parameter(config, "min_speed", float, 5)
         self._max_speed = get_value_parameter(config, "max_speed", float, 15)
         
+        # Get random seed if provided
+        self._random_seed = get_value_parameter(config, "random_seed", int, None)
+        if self._random_seed is not None:
+            random.seed(self._random_seed)
+            print(f"SPEC_Random: Using random seed {self._random_seed}")
+        else:
+            print("SPEC_Random: Using random seed from system time.")
+
         self._trigger_location = config.trigger_points[0].location
         self._reference_waypoint = self._map.get_waypoint(self._trigger_location)
         
@@ -253,18 +261,30 @@ class SPEC_Random(BasicScenario):
         """
         Custom initialization of actors
         """
-        # Find non-overlapping starting positions
+        # Find non-overlapping starting positions randomly
+        print("SPEC_Random: Generating random start positions.")
         self._start_waypoints = find_non_overlapping_waypoints(
-            self._reference_waypoint, 
-            self._num_vehicles, 
-            min_distance=10.0, 
+            self._reference_waypoint,
+            self._num_vehicles,
+            min_distance=10.0,
             max_distance=50.0
         )
-        
-        # If we couldn't find enough waypoints, adjust the number of vehicles
+
+        # Adjust the number of vehicles if fewer waypoints were found
+        original_num_vehicles = self._num_vehicles
         self._num_vehicles = min(self._num_vehicles, len(self._start_waypoints))
-        
-        # Find destination waypoints
+        if self._num_vehicles < original_num_vehicles:
+            print(f"Warning: Could only find {self._num_vehicles} non-overlapping waypoints. Adjusted number of vehicles.")
+
+
+        # Ensure we have start waypoints before finding destinations
+        if not self._start_waypoints:
+             print("Error: No start waypoints available. Cannot proceed.")
+             # Handle error appropriately, maybe raise exception or return early
+             return # Or raise Exception("Failed to initialize start waypoints")
+
+
+        # Find destination waypoints based on the final list of start waypoints
         self._destination_waypoints = find_destination_waypoints(self._start_waypoints, self._end_waypoint)
         # Print every destination waypoint's location for debugging
         for i, waypoint in enumerate(self._destination_waypoints):
@@ -290,6 +310,7 @@ class SPEC_Random(BasicScenario):
         
         # Set vehicles to their starting points
         for i, vehicle in enumerate(self._vehicles):
+            # Use the waypoint's transform
             behavior.add_child(
                 ActorTransformSetter(vehicle, self._start_waypoints[i].transform)
             )
