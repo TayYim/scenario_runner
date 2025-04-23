@@ -11,4 +11,3 @@ matplotlib
 six
 simple-watchdog-timer
 scipy==1.7.3
-commonroad-crime

@@ -31,7 +31,6 @@ if spec_path not in sys.path:
 
 # Import compute_see_carla and compute_dsee_carla from hsr_calculation
 from src.data_process.hsr_calculation import compute_see_carla, compute_dsee_carla
-from src.utils.commonroad_handler import CommonRoadHandler
 
 
 def find_leftmost_lane(waypoint):
@@ -120,12 +119,15 @@ class SPECDataCollector(AtomicBehavior):
     - Ego vehicle marker
     """
 
-    def __init__(self, actor=None, name="SPECDataCollector", lx=10, ly=60, nrad=4, nring=3, visualize_planning_arrow=True):
+    def __init__(self, actor=None, name="SPECDataCollector", lx=10, ly=60, nrad=4, nring=3, visualize_planning_arrow=True, TTC_FILTER_VALUE=50):
         """
         Setup for SPEC data collection
         """
         self.task_id = name + "_" + datetime.datetime.now().strftime("%m%d%H%M%S")
         self.finished = False  # Use to mark whether the terminate function has been executed
+        
+        # TTC filter for TTR calculation
+        self.TTC_FILTER_VALUE = TTC_FILTER_VALUE
         
         # SEE parameters
         ## Note: the x and y in lx and ly are different from the x and y in the Carla world
@@ -159,25 +161,15 @@ class SPECDataCollector(AtomicBehavior):
             "steering": [],
             "acceleration": [],
             "is_ego": [],
-            "ttr": []
+            "ttr": [],
+            "ttc": []
         }
-        
-        # Add TTR tracking
-        self._data_structure["ttr"] = []
         
         # Add road border tracking
         self.road_borders = {
             "left_border": None,
             "right_border": None
         }
-        
-        # Initialize CommonRoadHandler instance
-        # Get the directory of the current script
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        # Construct the relative path to the scenario file (going up one directory)
-        scenario_path = os.path.join(script_dir, '..', '..', '..', '..', '..', 'src', 'configs', 'map_layout', 'town04_route98_interpolated.xml')
-        scenario_path = os.path.normpath(scenario_path) # Normalize the path (e.g., remove '..')
-        self._commonroad_handler = CommonRoadHandler(scenario_path=scenario_path, debug=False, visualize=True)
         
         # Initialize base class
         super(SPECDataCollector, self).__init__(name, actor)
@@ -277,6 +269,20 @@ class SPECDataCollector(AtomicBehavior):
             
             # Mark if this is the ego vehicle
             self._data_structure["is_ego"].append(vehicle.id == ego_id)
+            
+            # Only calculate car follow data for ego vehicle
+            if vehicle.id == ego_id:
+                # Get car follow data for this vehicle including TTC
+                car_follow_data = CarlaDataProvider.get_car_follow_data(vehicle)
+                
+                # Add TTC data for this vehicle
+                if car_follow_data and "ttc" in car_follow_data:
+                    ttc_value = car_follow_data["ttc"]
+                    self._data_structure["ttc"].append(ttc_value)
+                else:
+                    self._data_structure["ttc"].append(None)
+            else:
+                self._data_structure["ttc"].append(None)
         
         # Get planning encoding from CarlaDataProvider
         planning_encoding = CarlaDataProvider.get_planning_encoding()
@@ -394,19 +400,30 @@ class SPECDataCollector(AtomicBehavior):
 
         # Calculate DSEE/TTR using compute_dsee_carla
         try:
-            # Calculate TTR using the same collected data
-            ttr_value = compute_dsee_carla(
-                collected_data=self._data_structure,
-                ego_id=ego_id,
-                commonRoadHandler=self._commonroad_handler
-            )
+            # Get TTC from CarlaDataProvider
+            ego_ttc = None
+            if self._actor:
+                car_follow_data = CarlaDataProvider.get_car_follow_data(self._actor)
+                ego_ttc = car_follow_data["ttc"]
+            
+            # Only calculate TTR if TTC is below the threshold
+            if ego_ttc is not None and ego_ttc <= self.TTC_FILTER_VALUE:
+                # print("ego_ttc: ", ego_ttc)
+                # Calculate TTR using the same collected data
+                ttr_value = compute_dsee_carla(
+                    collected_data=self._data_structure,
+                    ego_id=ego_id
+                )
+            else:
+                # Set TTR to infinity if TTC is above threshold or None
+                ttr_value = float('inf')
             
             # Store TTR value in data structure
             self._data_structure["ttr"].append(ttr_value)
             
             # Debug print the TTR value
-            # if ttr_value < 5: # For debugging, only print TTR value if it's less than 5
-            print(f"===== TTR Value at time {game_time:.2f}: {ttr_value:.2f} =====")
+            if ttr_value < float('inf'):  # Only print if not infinity
+                print(f"===== TTR Value at time {game_time:.2f}: {ttr_value:.2f} =====")
             
         except Exception as e:
             print(f"Error calculating TTR/DSEE value: {e}")
