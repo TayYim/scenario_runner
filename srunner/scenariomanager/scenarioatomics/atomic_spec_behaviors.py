@@ -119,7 +119,7 @@ class SPECDataCollector(AtomicBehavior):
     - Ego vehicle marker
     """
 
-    def __init__(self, actor=None, name="SPECDataCollector", lx=10, ly=60, nrad=4, nring=3, visualize_planning_arrow=True, TTC_FILTER_VALUE=50):
+    def __init__(self, actor=None, name="SPECDataCollector", lx=10, ly=60, nrad=4, nring=3, visualize_planning_arrow=True, TTC_FILTER_VALUE=50, output_mode="numpy"):
         """
         Setup for SPEC data collection
         """
@@ -134,7 +134,6 @@ class SPECDataCollector(AtomicBehavior):
         ## lx and ly are the lengths of the perception area based on the ego vehicle's heading
         ## lx is the length in the direction of the vehicle's heading
         ## ly is the length perpendicular to the vehicle's heading
-        # lx set to 10 (not 12) by default because the lanes are less then highway
         self.lx = lx  # Perception area length x
         self.ly = ly  # Perception area length y
         self.nrad = nrad  # Number of radial divisions
@@ -142,6 +141,21 @@ class SPECDataCollector(AtomicBehavior):
         
         # Visualization flag
         self.visualize_planning_arrow = visualize_planning_arrow
+        
+        # Output mode (csv or numpy)
+        self.output_mode = output_mode
+        
+        # Collision tracking
+        self.collision_data = None
+        self.collision_happened = False
+        
+        # Create compact data structures for numpy output mode
+        self.compact_data = {
+            "game_time": [],
+            "planning_encoding": [],
+            "ttr": [],
+            "see_matrix": []
+        }
         
         # Initialize visualization figures
         # We don't create the figures here - they'll be created when needed
@@ -173,12 +187,48 @@ class SPECDataCollector(AtomicBehavior):
         
         # Initialize base class
         super(SPECDataCollector, self).__init__(name, actor)
+        
+        # Set up collision sensor if ego actor is provided
+        if self._actor:
+            world = CarlaDataProvider.get_world()
+            bp = world.get_blueprint_library().find('sensor.other.collision')
+            self.collision_sensor = world.spawn_actor(bp, carla.Transform(), attach_to=self._actor)
+            self.collision_sensor.listen(lambda event: self._on_collision(event))
 
-    def initialise(self):
+    def _on_collision(self, event):
         """
-        Set up initial data structure
+        Callback function for collision events
         """
-        super(SPECDataCollector, self).initialise()
+        if not self.collision_happened:
+            self.collision_happened = True
+            
+            # Get collision information
+            other_actor = event.other_actor
+            
+            # Record ego vehicle data
+            ego_loc = self._actor.get_location()
+            ego_vel = self._actor.get_velocity()
+            
+            # Record other vehicle data
+            other_loc = other_actor.get_location() if hasattr(other_actor, 'get_location') else None
+            other_vel = other_actor.get_velocity() if hasattr(other_actor, 'get_velocity') else None
+            
+            # Store collision data
+            self.collision_data = {
+                "ego_x": float(ego_loc.x),
+                "ego_y": float(ego_loc.y),
+                "ego_vx": float(ego_vel.x),
+                "ego_vy": float(ego_vel.y),
+                "other_id": other_actor.id if hasattr(other_actor, 'id') else -1,
+                "other_type": other_actor.type_id if hasattr(other_actor, 'type_id') else "unknown",
+                "other_x": float(other_loc.x) if other_loc else None,
+                "other_y": float(other_loc.y) if other_loc else None,
+                "other_vx": float(other_vel.x) if other_vel else None,
+                "other_vy": float(other_vel.y) if other_vel else None,
+                "game_time": GameTime.get_time()
+            }
+            
+            print(f"Collision detected at time {self.collision_data['game_time']:.2f}s with {self.collision_data['other_type']}")
 
     def update(self):
         """
@@ -296,6 +346,10 @@ class SPECDataCollector(AtomicBehavior):
             # We'll only store it once per timestep, associated with the ego vehicle
             self._data_structure["planning_encoding"].append(planning_encoding)
             
+            # Store in compact data structure for numpy output
+            self.compact_data["game_time"].append(game_time)
+            self.compact_data["planning_encoding"].append(planning_encoding)
+            
             # Visualize planning encoding in CARLA window if enabled and not moving straight
             if self.visualize_planning_arrow and planning_encoding is not None and self._actor and abs(planning_encoding) >= 0.01:
                 try:
@@ -387,6 +441,10 @@ class SPECDataCollector(AtomicBehavior):
                 road_borders=road_borders  # Add road borders to the function call
             )
             
+            # Store SEE matrix in compact data structure for numpy output
+            if see_matrix is not None:
+                self.compact_data["see_matrix"].append(see_matrix.copy())
+            
             # Debug printing
             # print("\n===== SEE Matrix (Timestep: {}) =====".format(game_time))
             # print(see_matrix)
@@ -397,6 +455,9 @@ class SPECDataCollector(AtomicBehavior):
             
         except Exception as e:
             print(f"Error calculating SEE encoding: {e}")
+            # Add None to maintain data structure alignment
+            if ego_id is not None:
+                self.compact_data["see_matrix"].append(None)
 
         # Calculate DSEE/TTR using compute_dsee_carla
         try:
@@ -421,6 +482,10 @@ class SPECDataCollector(AtomicBehavior):
             # Store TTR value in data structure
             self._data_structure["ttr"].append(ttr_value)
             
+            # Store TTR in compact data structure for numpy output
+            if ego_id is not None:
+                self.compact_data["ttr"].append(ttr_value)
+            
             # Debug print the TTR value
             if ttr_value < float('inf'):  # Only print if not infinity
                 print(f"===== TTR Value at time {game_time:.2f}: {ttr_value:.2f} =====")
@@ -429,6 +494,8 @@ class SPECDataCollector(AtomicBehavior):
             print(f"Error calculating TTR/DSEE value: {e}")
             # Add a placeholder value to maintain data structure alignment
             self._data_structure["ttr"].append(None)
+            if ego_id is not None:
+                self.compact_data["ttr"].append(None)
 
         return new_status
 
@@ -528,8 +595,15 @@ class SPECDataCollector(AtomicBehavior):
 
         self.finished = True
         
-        # Save data to CSV
-        self._save_result_to_csv()
+        # Save data based on the selected output mode
+        if self.output_mode == "csv":
+            self._save_result_to_csv()
+        else:  # numpy is the default
+            self._save_result_to_numpy()
+        
+        # Destroy collision sensor if it exists
+        if hasattr(self, 'collision_sensor') and self.collision_sensor:
+            self.collision_sensor.destroy()
         
         # Close all open figures
         plt.close('all')
@@ -561,3 +635,66 @@ class SPECDataCollector(AtomicBehavior):
                 writer.writerow(row)
                 
         print(f"SPEC data collection saved to {csv_filename}")
+
+    def _save_result_to_numpy(self):
+        """
+        Save specific data to numpy files
+        - PE (Planning Encoding)
+        - DSEE/TTR
+        - SEE matrix
+        - game_time
+        - Collision data if collision occurred
+        """
+        try:
+            import numpy as np
+            
+            # Create base filename
+            base_filename = f"SPEC_compact_{self.task_id}"
+            
+            # Convert lists to numpy arrays
+            game_time = np.array(self.compact_data["game_time"], dtype=np.float32)
+            planning_encoding = np.array(self.compact_data["planning_encoding"], dtype=np.float32)
+            ttr = np.array(self.compact_data["ttr"], dtype=np.float32)
+            
+            # SEE matrices need special handling due to potential None values
+            see_matrices = []
+            for matrix in self.compact_data["see_matrix"]:
+                if matrix is not None:
+                    see_matrices.append(matrix)
+                else:
+                    # Create a zero matrix with the expected shape
+                    empty_matrix = np.zeros((self.nrad, self.nring), dtype=np.float32)
+                    see_matrices.append(empty_matrix)
+            
+            # Convert list of matrices to 3D numpy array (timesteps, nrad, nring)
+            see_matrices = np.array(see_matrices, dtype=np.float32)
+            
+            # Save the main data arrays
+            np.save(f"{base_filename}_time.npy", game_time)
+            np.save(f"{base_filename}_pe.npy", planning_encoding)
+            np.save(f"{base_filename}_ttr.npy", ttr)
+            np.save(f"{base_filename}_see.npy", see_matrices)
+            
+            # Save collision data if available
+            if self.collision_happened and self.collision_data:
+                collision_dict = self.collision_data
+                # Save as a small numpy array using savez
+                np.savez(f"{base_filename}_collision.npz", **collision_dict)
+                
+                print(f"Collision data saved to {base_filename}_collision.npz")
+            
+            print(f"Compact SPEC data saved to {base_filename}_*.npy files")
+            
+            # Print summary of saved data
+            print(f"Summary of saved data:")
+            print(f"  - Time points: {len(game_time)}")
+            print(f"  - Planning encoding: {len(planning_encoding)}")
+            print(f"  - TTR values: {len(ttr)}")
+            print(f"  - SEE matrices: {see_matrices.shape}")
+            print(f"  - Collision occurred: {self.collision_happened}")
+            
+        except Exception as e:
+            print(f"Error saving numpy data: {e}")
+            # Fallback to CSV format
+            print("Falling back to CSV format")
+            self._save_result_to_csv()
