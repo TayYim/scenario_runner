@@ -157,6 +157,9 @@ class SPECDataCollector(AtomicBehavior):
             "see_matrix": []
         }
         
+        # Store the current SEE matrix for access by other components
+        self.current_see_matrix = None
+        
         # Initialize visualization figures
         # We don't create the figures here - they'll be created when needed
         
@@ -194,6 +197,18 @@ class SPECDataCollector(AtomicBehavior):
             bp = world.get_blueprint_library().find('sensor.other.collision')
             self.collision_sensor = world.spawn_actor(bp, carla.Transform(), attach_to=self._actor)
             self.collision_sensor.listen(lambda event: self._on_collision(event))
+
+    def get_see_encoding(self):
+        """
+        Returns the current SEE matrix for use by other components
+        
+        Returns:
+            numpy.ndarray: The current SEE matrix, or None if not available
+        """
+        if hasattr(self, 'current_see_matrix') and self.current_see_matrix is not None:
+            # Return a copy to prevent modification by external components
+            return self.current_see_matrix.copy()
+        return None
 
     def _on_collision(self, event):
         """
@@ -389,7 +404,7 @@ class SPECDataCollector(AtomicBehavior):
                 except Exception as e:
                     print(f"Error drawing planning encoding arrow: {e}")
         
-        # Calculate SEE encoding using the latest collected data
+        # Use compute_see_carla to calculate the SEE matrix with road borders
         try:
             # Prepare road borders for SEE calculation if available
             road_borders = None
@@ -441,6 +456,9 @@ class SPECDataCollector(AtomicBehavior):
                 road_borders=road_borders  # Add road borders to the function call
             )
             
+            # Store SEE matrix for external access
+            self.current_see_matrix = see_matrix
+            
             # Store SEE matrix in compact data structure for numpy output
             if see_matrix is not None:
                 self.compact_data["see_matrix"].append(see_matrix.copy())
@@ -455,10 +473,11 @@ class SPECDataCollector(AtomicBehavior):
             
         except Exception as e:
             print(f"Error calculating SEE encoding: {e}")
+            see_matrix = None
             # Add None to maintain data structure alignment
             if ego_id is not None:
                 self.compact_data["see_matrix"].append(None)
-
+        
         # Calculate DSEE/TTR using compute_dsee_carla
         try:
             # Get TTC from CarlaDataProvider
