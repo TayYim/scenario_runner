@@ -146,7 +146,7 @@ class SPECDataCollector(AtomicBehavior):
         self.output_mode = output_mode
         
         # Collision tracking
-        self.collision_data = None
+        self.collision_data = []
         self.collision_happened = False
         
         # Create compact data structures for numpy output mode
@@ -214,36 +214,39 @@ class SPECDataCollector(AtomicBehavior):
         """
         Callback function for collision events
         """
-        if not self.collision_happened:
-            self.collision_happened = True
+        # Record that a collision happened (keep this flag for compatibility)
+        self.collision_happened = True
             
-            # Get collision information
-            other_actor = event.other_actor
+        # Get collision information
+        other_actor = event.other_actor
             
-            # Record ego vehicle data
-            ego_loc = self._actor.get_location()
-            ego_vel = self._actor.get_velocity()
+        # Record ego vehicle data
+        ego_loc = self._actor.get_location()
+        ego_vel = self._actor.get_velocity()
             
-            # Record other vehicle data
-            other_loc = other_actor.get_location() if hasattr(other_actor, 'get_location') else None
-            other_vel = other_actor.get_velocity() if hasattr(other_actor, 'get_velocity') else None
+        # Record other vehicle data
+        other_loc = other_actor.get_location() if hasattr(other_actor, 'get_location') else None
+        other_vel = other_actor.get_velocity() if hasattr(other_actor, 'get_velocity') else None
             
-            # Store collision data
-            self.collision_data = {
-                "ego_x": float(ego_loc.x),
-                "ego_y": float(ego_loc.y),
-                "ego_vx": float(ego_vel.x),
-                "ego_vy": float(ego_vel.y),
-                "other_id": other_actor.id if hasattr(other_actor, 'id') else -1,
-                "other_type": other_actor.type_id if hasattr(other_actor, 'type_id') else "unknown",
-                "other_x": float(other_loc.x) if other_loc else None,
-                "other_y": float(other_loc.y) if other_loc else None,
-                "other_vx": float(other_vel.x) if other_vel else None,
-                "other_vy": float(other_vel.y) if other_vel else None,
-                "game_time": GameTime.get_time()
-            }
+        # Create collision data record
+        collision_record = {
+            "ego_x": float(ego_loc.x),
+            "ego_y": float(ego_loc.y),
+            "ego_vx": float(ego_vel.x),
+            "ego_vy": float(ego_vel.y),
+            "other_id": other_actor.id if hasattr(other_actor, 'id') else -1,
+            "other_type": other_actor.type_id if hasattr(other_actor, 'type_id') else "unknown",
+            "other_x": float(other_loc.x) if other_loc else None,
+            "other_y": float(other_loc.y) if other_loc else None,
+            "other_vx": float(other_vel.x) if other_vel else None,
+            "other_vy": float(other_vel.y) if other_vel else None,
+            "game_time": GameTime.get_time()
+        }
             
-            print(f"Collision detected at time {self.collision_data['game_time']:.2f}s with {self.collision_data['other_type']}")
+        # Add this collision record to our list
+        self.collision_data.append(collision_record)
+            
+        print(f"Collision #{len(self.collision_data)} detected at time {collision_record['game_time']:.2f}s with {collision_record['other_type']}")
 
     def update(self):
         """
@@ -696,11 +699,51 @@ class SPECDataCollector(AtomicBehavior):
             
             # Save collision data if available
             if self.collision_happened and self.collision_data:
-                collision_dict = self.collision_data
-                # Save as a small numpy array using savez
-                np.savez(f"{base_filename}_collision.npz", **collision_dict)
+                # Convert collision data to structured array
+                # We need to handle string data separately as numpy structured arrays work best with numeric data
+                num_collisions = len(self.collision_data)
                 
-                print(f"Collision data saved to {base_filename}_collision.npz")
+                # Create structured arrays for numeric data
+                collision_data_numeric = np.zeros(num_collisions, dtype=[
+                    ('ego_x', np.float32),
+                    ('ego_y', np.float32),
+                    ('ego_vx', np.float32),
+                    ('ego_vy', np.float32),
+                    ('other_id', np.int32),
+                    ('other_x', np.float32),
+                    ('other_y', np.float32),
+                    ('other_vx', np.float32),
+                    ('other_vy', np.float32),
+                    ('game_time', np.float32)
+                ])
+                
+                # Collect string data separately
+                other_types = []
+                
+                # Fill the arrays with data
+                for i, collision in enumerate(self.collision_data):
+                    collision_data_numeric[i]['ego_x'] = collision['ego_x']
+                    collision_data_numeric[i]['ego_y'] = collision['ego_y']
+                    collision_data_numeric[i]['ego_vx'] = collision['ego_vx']
+                    collision_data_numeric[i]['ego_vy'] = collision['ego_vy']
+                    collision_data_numeric[i]['other_id'] = collision['other_id']
+                    collision_data_numeric[i]['other_x'] = collision['other_x'] if collision['other_x'] is not None else np.nan
+                    collision_data_numeric[i]['other_y'] = collision['other_y'] if collision['other_y'] is not None else np.nan
+                    collision_data_numeric[i]['other_vx'] = collision['other_vx'] if collision['other_vx'] is not None else np.nan
+                    collision_data_numeric[i]['other_vy'] = collision['other_vy'] if collision['other_vy'] is not None else np.nan
+                    collision_data_numeric[i]['game_time'] = collision['game_time']
+                    other_types.append(collision['other_type'])
+                
+                # Save all collision data in a single file using npz format
+                np.savez(
+                    f"{base_filename}_collisions.npz",
+                    collision_count=num_collisions,
+                    collision_data=collision_data_numeric,
+                    other_types=np.array(other_types, dtype=object),
+                    collision_times=np.array([c['game_time'] for c in self.collision_data], dtype=np.float32)
+                )
+                
+                print(f"{num_collisions} collision records saved to {base_filename}_collisions.npz")
             
             print(f"Compact SPEC data saved to {base_filename}_*.npy files")
             
@@ -710,7 +753,7 @@ class SPECDataCollector(AtomicBehavior):
             print(f"  - Planning encoding: {len(planning_encoding)}")
             print(f"  - TTR values: {len(ttr)}")
             print(f"  - SEE matrices: {see_matrices.shape}")
-            print(f"  - Collision occurred: {self.collision_happened}")
+            print(f"  - Collisions recorded: {len(self.collision_data)}")
             
         except Exception as e:
             print(f"Error saving numpy data: {e}")
