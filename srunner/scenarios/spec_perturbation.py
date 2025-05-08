@@ -1339,37 +1339,125 @@ class SPEC_Perturbation(BasicScenario):
 
     def _initialize_actors(self, config):
         """
-        Custom initialization of actors
+        Custom initialization of actors with coverage-driven positioning
         """
-        # Find non-overlapping starting positions randomly, from 40m behind to 40m ahead
-        print("SPEC_Perturbation: Generating random start positions, 40m behind to 40m ahead.")
-        self._start_waypoints = find_non_overlapping_waypoints(
-            self._reference_waypoint,
-            self._num_vehicles,
-            min_distance=-40.0,  # 40m behind
-            max_distance=40.0,   # 40m ahead
-            max_attempts=100
-        )
-
-        # Adjust the number of vehicles if fewer waypoints were found
-        original_num_vehicles = self._num_vehicles
-        self._num_vehicles = min(self._num_vehicles, len(self._start_waypoints))
-        if self._num_vehicles < original_num_vehicles:
-            print(f"Warning: Could only find {self._num_vehicles} non-overlapping waypoints. Adjusted number of vehicles.")
-
-        # Ensure we have start waypoints before finding destinations
-        if not self._start_waypoints:
-             print("Error: No start waypoints available. Cannot proceed.")
-             # Handle error appropriately, maybe raise exception or return early
-             return # Or raise Exception("Failed to initialize start waypoints")
-
-        # Find destination waypoints based on the final list of start waypoints
-        self._destination_waypoints = find_destination_waypoints(self._start_waypoints, self._end_waypoint)
-        # Print every destination waypoint's location for debugging
-        for i, waypoint in enumerate(self._destination_waypoints):
-            print(f"Destination waypoint {i}: {waypoint.transform.location}")
+        # Track attempts for logging/debugging
+        see_try_count = 0
+        inside_try_count = 0
+        max_tries = 20  # Maximum number of position configurations to try
+        max_inside_tries = 10  # Maximum attempts with the same vehicle count
+        found_uncovered = False
         
-        # Create vehicles and move them underground
+        # The original number of vehicles requested
+        original_num_vehicles = self._num_vehicles
+        
+        # Get database collection if we want to check for coverage
+        hsr_collection = _hsr_collection  # Use the global database reference
+        
+        # If no database or HSR collection is available, skip coverage-based optimization
+        if hsr_collection is None:
+            print("No HSR collection available. Using random positions without coverage check.")
+            found_uncovered = True
+        
+        while see_try_count <= max_tries and not found_uncovered:
+            # Generate random starting positions like before
+            self._start_waypoints = find_non_overlapping_waypoints(
+                self._reference_waypoint,
+                self._num_vehicles,
+                min_distance=-40.0,  # 40m behind
+                max_distance=40.0,   # 40m ahead
+                max_attempts=100
+            )
+            
+            # Skip if no valid waypoints were found
+            if not self._start_waypoints:
+                print("Error: No start waypoints available. Cannot proceed.")
+                return
+            
+            # Adjust number of vehicles based on available waypoints
+            self._num_vehicles = min(self._num_vehicles, len(self._start_waypoints))
+            
+            # Get destination waypoints for these starting positions
+            self._destination_waypoints = find_destination_waypoints(self._start_waypoints, self._end_waypoint)
+            
+            # If we don't have a database reference, don't try to optimize
+            if hsr_collection is None:
+                found_uncovered = True
+                break
+            
+            # Try to check if this configuration creates a new coverage state
+            try:
+                # Calculate SEE grid using just waypoint positions (no need to create vehicles)
+                # Create data structure for SEE calculation
+                data_struct = {
+                    "game_time": [], "vehicle_id": [], "x": [], "y": [], "vx": [], "vy": [],
+                    "lane_id": [], "steering": [], "acceleration": [], "is_ego": []
+                }
+                
+                # Add ego vehicle data (using reference waypoint)
+                current_time = GameTime.get_time()
+                data_struct["game_time"].append(current_time)
+                data_struct["vehicle_id"].append(0)  # Use 0 for ego
+                data_struct["x"].append(self._reference_waypoint.transform.location.x)
+                data_struct["y"].append(self._reference_waypoint.transform.location.y)
+                data_struct["vx"].append(0)  # Stationary for calculation
+                data_struct["vy"].append(0)
+                data_struct["lane_id"].append(self._reference_waypoint.lane_id)
+                data_struct["steering"].append(0)
+                data_struct["acceleration"].append(0)
+                data_struct["is_ego"].append(True)
+                
+                # Add NPC vehicle data from waypoints
+                for idx, wp in enumerate(self._start_waypoints):
+                    data_struct["game_time"].append(current_time)
+                    data_struct["vehicle_id"].append(idx + 1)
+                    data_struct["x"].append(wp.transform.location.x)
+                    data_struct["y"].append(wp.transform.location.y)
+                    data_struct["vx"].append(0)  # Stationary for calculation
+                    data_struct["vy"].append(0)
+                    data_struct["lane_id"].append(wp.lane_id)
+                    data_struct["steering"].append(0)
+                    data_struct["acceleration"].append(0)
+                    data_struct["is_ego"].append(False)
+                
+                # Calculate SEE grid
+                see_mat, _ = compute_see_carla(
+                    SPEC_CONF.lx, 
+                    SPEC_CONF.ly, 
+                    SPEC_CONF.n_rad, 
+                    SPEC_CONF.n_ring, 
+                    data_struct
+                )
+                grid_decimal = grid_to_decimal(see_mat)
+                
+                # Query database to check if this SEE state is already covered
+                query = {"see": grid_decimal, "covered": {"$exists": True, "$eq": False}}
+                is_uncovered = hsr_collection.count_documents(query, limit=1) > 0
+                
+                if is_uncovered:
+                    print(f"Found uncovered SEE state (grid_decimal: {grid_decimal}) at try {see_try_count}, inner try {inside_try_count}")
+                    found_uncovered = True
+                else:
+                    # This SEE state is already covered, try again
+                    inside_try_count += 1
+                    
+                    # If we've tried too many times with this vehicle count, increment and try again
+                    if inside_try_count >= max_inside_tries:
+                        inside_try_count = 0
+                        see_try_count += 1
+                    continue
+                
+            except Exception as e:
+                print(f"Error during SEE calculation: {e}")
+                # If calculation fails, just use the current configuration
+                found_uncovered = True
+            
+            # Break if we've tried too many times
+            if see_try_count >= max_tries:
+                print(f"Reached maximum attempts ({max_tries}). Using current configuration.")
+                found_uncovered = True
+        
+        # Now create the actual vehicles using the final waypoints
         successful_vehicles = []
         successful_start_waypoints = []
         successful_destination_waypoints = []
