@@ -560,24 +560,14 @@ class PerturbationManager:
                 
                 # 4. Check if this HSR state exists in the main collection
                 check_dict = {
-                    "grid_decimal": grid_decimal,
-                    "ttr_seg": ttr_seg_pred,
-                    "planning_type": planning_type_pred
+                    "see": grid_decimal, 
+                    "dsee": ttr_seg_pred,
+                    "pe": planning_type_pred,
+                    "covered": False  # Looking for uncovered states
                 }
                 
-                novel_state = False
-                try:
-                    # Check if this combination already exists in the main collection
-                    # print(f"==========Try No.: {try_count}==========")
-                    # print(f"Checking if state exists: {check_dict}")
-                    # print(f"delta: {new_deltas}")
-                    # print(f"original obs: {obs_array}")
-                    # print(f"obs pred: {pred_obs}")
-                    exists = main_collection.count_documents(check_dict, limit=1) > 0
-                    novel_state = not exists
-                    # print(f"Novel state: {novel_state}, current try: {try_count}")
-                except Exception as e:
-                    _log.debug(f"Database query error: {e}")
+                exists = hsr_collection.count_documents(check_dict, limit=1) > 0
+                novel_state = exists  # Novel if it exists with covered=False
                 
                 # If this is a novel HSR state, use these perturbations
                 if novel_state:
