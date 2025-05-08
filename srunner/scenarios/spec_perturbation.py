@@ -46,6 +46,7 @@ from src.utils.common import get_segmented_value
 from src.utils.common import calculate_next_status
 from src.utils.common import generate_random_name_string
 from src.configs.environment_configurations import SPECConfig
+from src.configs.environment_configurations import COAXConfig
 from src.coax.models.model import process_obs_norm, get_CNN_model
 import torch
 
@@ -346,12 +347,17 @@ class PerturbationManager:
         self._vehicle_deltas = {}      # vehicle_id -> (throttle_delta, steer_delta)
         self._last_recalc_step = -1
         self._last_try_count = 0       # Track how many tries were needed in the last recalculation
-        # Parameters mirroring COAXCONF defaults
-        self.gap_control = 8
-        self.steer_range = (-np.pi/30, np.pi/30)
-        self.acc_range = (-2.0, 4.0)
-        self.max_try = 20
-        self.dt_pred = 0.4  # seconds horizon for prediction
+        
+        # Use COAXConfig for parameters with specified overrides
+        coax_config = COAXConfig(
+            gap_control=20,
+            steering_sample_range=(-np.pi/6, np.pi/6),
+        )
+        self.gap_control = coax_config.gap_control  
+        self.steer_range = coax_config.steering_sample_range  
+        self.acc_range = coax_config.acceleration_sample_range  
+        self.max_try = coax_config.max_try  
+        self.dt_pred = self.gap_control // 2 
 
     def register_vehicle(self, vehicle, index):
         """Register a vehicle with the manager"""
@@ -1282,8 +1288,11 @@ class SPEC_Perturbation(BasicScenario):
         self._map = CarlaDataProvider.get_map()
         self.timeout = timeout
         
-        # Get parameters
-        self._num_vehicles = get_value_parameter(config, "num_vehicles", int, 10)
+        # Initialize COAXConfig to get npc_num list
+        coax_config = COAXConfig()
+        
+        # Get parameters - use random selection from npc_num for number of vehicles
+        self._num_vehicles = int(np.random.choice(coax_config.npc_num))
         self._min_speed = get_value_parameter(config, "min_speed", float, 5)
         self._max_speed = get_value_parameter(config, "max_speed", float, 15)
         
@@ -1298,6 +1307,7 @@ class SPEC_Perturbation(BasicScenario):
         # Generate a random save_name
         self._save_name = generate_random_name_string()
         print(f"SPEC_Perturbation: Using randomly generated save_name: {self._save_name}")
+        print(f"SPEC_Perturbation: Randomly selected {self._num_vehicles} vehicles from npc_num list")
 
         self._trigger_location = config.trigger_points[0].location
         self._reference_waypoint = self._map.get_waypoint(self._trigger_location)
