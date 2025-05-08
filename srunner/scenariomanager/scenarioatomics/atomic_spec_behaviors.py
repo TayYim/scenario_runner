@@ -175,7 +175,8 @@ class SPECDataCollector(AtomicBehavior):
             "vx": [],
             "vy": [],
             "lane_id": [],
-            "steering": [],
+            "steer_control": [],  # Renamed from "steering" to "steer_control"
+            "steering": [],       # New field for heading angle in radians
             "acceleration": [],
             "is_ego": [],
             "ttr": [],
@@ -324,7 +325,14 @@ class SPECDataCollector(AtomicBehavior):
             self._data_structure["vx"].append(round(float(velocity_vector.x), 2))
             self._data_structure["vy"].append(round(float(velocity_vector.y), 2))
             self._data_structure["lane_id"].append(lane_id)
-            self._data_structure["steering"].append(round(float(control.steer), 2))
+            
+            # Store the control.steer in steer_control
+            self._data_structure["steer_control"].append(round(float(control.steer), 2))
+            
+            # Calculate and store the heading angle in radians
+            forward_vector = transform.get_forward_vector()
+            heading_angle = math.atan2(forward_vector.y, forward_vector.x)
+            self._data_structure["steering"].append(round(float(heading_angle), 3))
             
             # Calculate rough acceleration (we could improve this with CDP data)
             try:
@@ -620,8 +628,10 @@ class SPECDataCollector(AtomicBehavior):
         # Save data based on the selected output mode
         if self.output_mode == "csv":
             self._save_result_to_csv()
-        else:  # numpy is the default
+        elif self.output_mode == "numpy":  # numpy is the default
             self._save_result_to_numpy()
+        elif self.output_mode == None:
+            pass # do nothing
         
         # Destroy collision sensor if it exists
         if hasattr(self, 'collision_sensor') and self.collision_sensor:
