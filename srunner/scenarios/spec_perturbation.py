@@ -54,7 +54,7 @@ import torch
 SPEC_Perturbation = None
 
 # Planning model global initialization (shared among all scenarios)
-SPEC_CONF = SPECConfig()
+SPEC_CONF = SPECConfig(lx=10)
 PLAN_MODEL_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "../../../../src/coax/models/highway_plan_4m.pth",
@@ -350,7 +350,7 @@ class PerturbationManager:
         
         # Use COAXConfig for parameters with specified overrides
         coax_config = COAXConfig(
-            gap_control=20,
+            gap_control=10,
             steering_sample_range=(-np.pi/6, np.pi/6),
         )
         self.gap_control = coax_config.gap_control  
